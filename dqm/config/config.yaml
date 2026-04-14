@@ -1,0 +1,46 @@
+# config.yaml
+# Data Quality Monitoring Framework — config template
+# Never commit real credentials — use environment variables in production
+
+sources:
+  sql_db:
+    dialect:   postgresql        # postgresql | mssql+pyodbc | snowflake
+    host:      YOUR_DB_HOST
+    port:      5432
+    database:  YOUR_DATABASE
+    user:      YOUR_USER
+    password:  YOUR_PASSWORD     # use env var: ${DB_PASSWORD}
+
+warehouse:
+  dialect:   postgresql
+  host:      YOUR_WAREHOUSE_HOST
+  port:      5432
+  database:  dq_warehouse
+  user:      YOUR_WH_USER
+  password:  YOUR_WH_PASSWORD    # use env var: ${WH_PASSWORD}
+
+alerts:
+  score_fail_threshold: 90       # alert if score drops below this
+  email_enabled: false           # set to true and fill smtp to enable
+  log_dir: reports/alerts
+  smtp:
+    host:       smtp.gmail.com
+    port:       587
+    user:       YOUR_EMAIL
+    password:   YOUR_APP_PASSWORD
+    sender:     YOUR_EMAIL
+    recipients:
+      - analyst@yourcompany.com
+      - dataeng@yourcompany.com
+
+quality:
+  warn_null_pct:        5.0
+  fail_null_pct:        20.0
+  warn_duplicate_pct:   1.0
+  fail_duplicate_pct:   5.0
+
+pipeline:
+  output_dir:    data/processed
+  reports_dir:   reports
+  history_file:  data/processed/quality_score_history.csv
+  log_level:     INFO
