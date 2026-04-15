@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Data Quality Monitoring Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #050a14;
+    --s1:      #0c1425;
+    --s2:      #111d33;
+    --s3:      #162240;
+    --border:  rgba(99,140,210,0.15);
+    --border2: rgba(99,140,210,0.25);
+    --text:    #e8edf8;
+    --muted:   #7a8aaa;
+    --dim:     #3d4f6e;
+    --green:   #00d68f;
+    --red:     #ff4d4d;
+    --amber:   #ffb020;
+    --blue:    #4d9fff;
+    --purple:  #a78bfa;
+    --teal:    #22d3ee;
+    --font:    'IBM Plex Sans', sans-serif;
+    --mono:    'IBM Plex Mono', monospace;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; overflow-x: hidden; }
+
+  /* scan-line effect */
+  body::after {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 999;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+  }
+
+  /* grid bg */
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      linear-gradient(rgba(77,159,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(77,159,255,0.04) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .wrapper { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 0 24px 56px; }
+
+  /* ── Header ── */
+  header {
+    padding: 28px 0 22px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 28px;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap;
+    animation: fadeIn 0.5s ease both;
+  }
+  .hdr-eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 10px; color: var(--green);
+    letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 10px;
+  }
+  .hdr-eyebrow::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--green); animation: blink 1.5s infinite; }
+  h1 { font-size: clamp(20px,3vw,30px); font-weight: 600; letter-spacing:-0.5px; line-height:1.15; }
+  h1 span { color: var(--teal); }
+  .hdr-sub { font-size:12px; color:var(--muted); font-family:var(--mono); margin-top:6px; }
+  .hdr-pills { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .hdr-pill { font-size:10px; font-family:var(--mono); padding:3px 9px; border-radius:3px; border:1px solid var(--border); color:var(--muted); }
+  .hdr-right { display:flex; flex-direction:column; gap:10px; align-items:flex-end; }
+  .run-btn {
+    font-family:var(--mono); font-size:11px; padding:8px 18px; border-radius:4px;
+    background: rgba(0,214,143,0.12); border:1px solid rgba(0,214,143,0.35); color:var(--green);
+    cursor:pointer; transition:all 0.2s; letter-spacing:0.05em;
+  }
+  .run-btn:hover { background:rgba(0,214,143,0.2); }
+  .filter-row { display:flex; gap:8px; flex-wrap:wrap; }
+  select {
+    background:var(--s2); border:1px solid var(--border); color:var(--text);
+    font-family:var(--mono); font-size:11px; padding:6px 10px; border-radius:4px;
+    cursor:pointer; outline:none; transition:border-color 0.2s;
+  }
+  select:focus { border-color:var(--blue); }
+
+  /* ── Score banner ── */
+  .score-banner {
+    background: var(--s1); border:1px solid var(--border); border-radius:12px;
+    padding:20px 24px; margin-bottom:20px;
+    display:flex; align-items:center; gap:32px; flex-wrap:wrap;
+    animation: fadeIn 0.4s 0.1s ease both;
+  }
+  .score-ring { position:relative; width:90px; height:90px; flex-shrink:0; }
+  .score-ring canvas { position:absolute; inset:0; }
+  .score-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .score-num  { font-size:24px; font-weight:600; font-family:var(--mono); }
+  .score-lbl  { font-size:9px; color:var(--muted); font-family:var(--mono); letter-spacing:0.08em; }
+  .score-info { flex:1; }
+  .score-grade { font-size:36px; font-weight:600; letter-spacing:-2px; }
+  .score-desc  { font-size:12px; color:var(--muted); font-family:var(--mono); margin-top:4px; }
+  .score-dims  { display:flex; gap:20px; flex-wrap:wrap; margin-top:14px; }
+  .dim-item { }
+  .dim-label { font-size:9px; font-family:var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; margin-bottom:3px; }
+  .dim-bar   { width:80px; height:4px; background:var(--s3); border-radius:999px; overflow:hidden; }
+  .dim-fill  { height:100%; border-radius:999px; transition:width 0.8s ease; }
+  .dim-val   { font-size:10px; font-family:var(--mono); margin-top:3px; }
+  .score-stats { display:flex; gap:24px; flex-wrap:wrap; }
+  .stat-box { text-align:center; }
+  .stat-num { font-size:22px; font-weight:600; font-family:var(--mono); }
+  .stat-lbl { font-size:10px; color:var(--muted); font-family:var(--mono); margin-top:2px; }
+
+  /* ── Check result rows ── */
+  .check-grid { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  .check-row {
+    display:flex; align-items:center; gap:12px;
+    background:var(--s2); border:1px solid var(--border); border-radius:8px;
+    padding:10px 14px; font-size:12px; transition:border-color 0.2s;
+  }
+  .check-row:hover { border-color:var(--border2); }
+  .check-row.fail  { border-left:3px solid var(--red); }
+  .check-row.warn  { border-left:3px solid var(--amber); }
+  .check-row.pass  { border-left:3px solid var(--green); }
+  .check-status { width:44px; flex-shrink:0; }
+  .st-badge { font-size:9px; font-family:var(--mono); padding:2px 7px; border-radius:3px; font-weight:500; letter-spacing:0.06em; }
+  .st-pass  { background:rgba(0,214,143,0.15); color:var(--green); }
+  .st-fail  { background:rgba(255,77,77,0.15);  color:var(--red); }
+  .st-warn  { background:rgba(255,176,32,0.15); color:var(--amber); }
+  .check-name  { flex:1; font-family:var(--mono); font-size:11px; color:var(--text); }
+  .check-col   { font-size:11px; color:var(--muted); min-width:110px; font-family:var(--mono); }
+  .check-failed{ font-size:11px; font-family:var(--mono); min-width:80px; text-align:right; }
+  .check-detail{ font-size:10px; color:var(--muted); flex:1.5; }
+  .fail-count  { color:var(--red); }
+  .warn-count  { color:var(--amber); }
+  .pass-count  { color:var(--green); }
+
+  /* ── KPI cards ── */
+  .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:12px; margin-bottom:20px; }
+  .kpi-card {
+    background:var(--s1); border:1px solid var(--border); border-radius:10px; padding:16px 18px;
+    animation:fadeIn 0.4s ease both; transition:border-color 0.2s;
+  }
+  .kpi-card:hover { border-color:var(--border2); }
+  .kpi-label { font-size:9px; font-family:var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px; }
+  .kpi-value { font-size:24px; font-weight:600; font-family:var(--mono); letter-spacing:-1px; }
+  .kpi-sub   { font-size:10px; color:var(--muted); margin-top:5px; font-family:var(--mono); }
+
+  /* ── Chart cards ── */
+  .grid-2    { display:grid; grid-template-columns:repeat(auto-fit,minmax(360px,1fr)); gap:14px; margin-bottom:14px; }
+  .grid-3    { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; margin-bottom:14px; }
+  .grid-full { margin-bottom:14px; }
+
+  .chart-card {
+    background:var(--s1); border:1px solid var(--border); border-radius:12px; padding:20px 22px;
+    animation:fadeIn 0.5s ease both; transition:border-color 0.2s;
+  }
+  .chart-card:hover { border-color:var(--border2); }
+  .chart-title { font-size:13px; font-weight:500; color:var(--text); margin-bottom:3px; }
+  .chart-sub   { font-size:10px; color:var(--muted); font-family:var(--mono); margin-bottom:14px; }
+
+  /* ── Table ── */
+  .table-wrap { overflow-x:auto; margin-top:8px; }
+  table { width:100%; border-collapse:collapse; font-size:11px; }
+  th { color:var(--muted); font-weight:500; text-transform:uppercase; letter-spacing:0.06em; font-size:9px; padding:8px 12px; text-align:left; border-bottom:1px solid var(--border); font-family:var(--mono); background:var(--s2); }
+  td { padding:9px 12px; border-bottom:1px solid rgba(99,140,210,0.08); font-family:var(--mono); font-size:11px; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:var(--s2); }
+  .tbadge { display:inline-block; font-size:9px; font-family:var(--mono); padding:2px 7px; border-radius:3px; font-weight:500; }
+  .tbadge-g { background:rgba(0,214,143,0.15);  color:var(--green); }
+  .tbadge-r { background:rgba(255,77,77,0.15);   color:var(--red); }
+  .tbadge-a { background:rgba(255,176,32,0.15);  color:var(--amber); }
+  .tbadge-b { background:rgba(77,159,255,0.15);  color:var(--blue); }
+
+  /* ── Alert log ── */
+  .alert-list { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+  .alert-item {
+    background:var(--s2); border:1px solid var(--border); border-radius:8px;
+    padding:12px 14px; display:flex; align-items:flex-start; gap:12px;
+  }
+  .alert-item.crit { border-left:3px solid var(--red); }
+  .alert-item.warn { border-left:3px solid var(--amber); }
+  .alert-item.info { border-left:3px solid var(--blue); }
+  .alert-icon { font-size:14px; flex-shrink:0; margin-top:1px; }
+  .alert-body { flex:1; }
+  .alert-title { font-size:12px; font-weight:500; margin-bottom:3px; }
+  .alert-meta  { font-size:10px; color:var(--muted); font-family:var(--mono); }
+  .alert-time  { font-size:10px; font-family:var(--mono); color:var(--dim); white-space:nowrap; }
+
+  /* ── Footer ── */
+  footer { margin-top:44px; padding-top:20px; border-top:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+  .footer-left  { font-size:11px; color:var(--muted); font-family:var(--mono); }
+  .footer-links { display:flex; gap:16px; }
+  .footer-links a { font-size:11px; color:var(--muted); text-decoration:none; font-family:var(--mono); transition:color 0.2s; }
+  .footer-links a:hover { color:var(--blue); }
+
+  /* ── Animations ── */
+  @keyframes fadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes blink  { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .kpi-card:nth-child(1){animation-delay:0.05s} .kpi-card:nth-child(2){animation-delay:0.10s}
+  .kpi-card:nth-child(3){animation-delay:0.15s} .kpi-card:nth-child(4){animation-delay:0.20s}
+  .kpi-card:nth-child(5){animation-delay:0.25s} .kpi-card:nth-child(6){animation-delay:0.30s}
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+<!-- ── Header ── -->
+<header>
+  <div>
+    <div class="hdr-eyebrow">System Online · Monitoring Active</div>
+    <h1>Data Quality <span>Monitor</span></h1>
+    <p class="hdr-sub">Automated checks · Airflow orchestrated · Daily 06:00 UTC</p>
+    <div class="hdr-pills">
+      <span class="hdr-pill">Python · Apache Airflow</span>
+      <span class="hdr-pill">PostgreSQL · Azure</span>
+      <span class="hdr-pill">6 check types</span>
+      <span class="hdr-pill">14 unit tests</span>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <button class="run-btn" onclick="runChecks()">▶ RUN CHECKS</button>
+    <div class="filter-row">
+      <select id="tableFilter" onchange="render()">
+        <option value="all">All Tables</option>
+        <option value="claims">claims</option>
+        <option value="members">members</option>
+        <option value="revenue_actuals">revenue_actuals</option>
+      </select>
+      <select id="statusFilter" onchange="render()">
+        <option value="all">All Statuses</option>
+        <option value="FAIL">FAIL only</option>
+        <option value="WARN">WARN only</option>
+        <option value="PASS">PASS only</option>
+      </select>
+    </div>
+  </div>
+</header>
+
+<!-- ── Score banner ── -->
+<div class="score-banner">
+  <div class="score-ring">
+    <canvas id="scoreRing" width="90" height="90"></canvas>
+    <div class="score-center">
+      <div class="score-num" id="scoreNum">—</div>
+      <div class="score-lbl">/100</div>
+    </div>
+  </div>
+  <div class="score-info">
+    <div style="display:flex;align-items:baseline;gap:12px;">
+      <div class="score-grade" id="scoreGrade">—</div>
+      <div class="score-desc" id="scoreDesc">—</div>
+    </div>
+    <div class="score-dims" id="scoreDims"></div>
+  </div>
+  <div class="score-stats">
+    <div class="stat-box"><div class="stat-num" style="color:var(--green)" id="sPassed">—</div><div class="stat-lbl">PASSED</div></div>
+    <div class="stat-box"><div class="stat-num" style="color:var(--amber)" id="sWarned">—</div><div class="stat-lbl">WARNED</div></div>
+    <div class="stat-box"><div class="stat-num" style="color:var(--red)"   id="sFailed">—</div><div class="stat-lbl">FAILED</div></div>
+    <div class="stat-box"><div class="stat-num" style="color:var(--muted)" id="sTotal">—</div><div class="stat-lbl">TOTAL</div></div>
+  </div>
+</div>
+
+<!-- ── KPI cards ── -->
+<div class="kpi-grid">
+  <div class="kpi-card"><div class="kpi-label">Tables Monitored</div><div class="kpi-value" style="color:var(--blue)" id="kTables">3</div><div class="kpi-sub">Daily checks</div></div>
+  <div class="kpi-card"><div class="kpi-label">Overall Score</div><div class="kpi-value" id="kScore">—</div><div class="kpi-sub">Weighted average</div></div>
+  <div class="kpi-card"><div class="kpi-label">Null Rate</div><div class="kpi-value" id="kNullRate">—</div><div class="kpi-sub">Avg across cols</div></div>
+  <div class="kpi-card"><div class="kpi-label">Duplicate Rate</div><div class="kpi-value" id="kDupRate">—</div><div class="kpi-sub">Key columns</div></div>
+  <div class="kpi-card"><div class="kpi-label">Range Violations</div><div class="kpi-value" id="kRange">—</div><div class="kpi-sub">Out of bounds</div></div>
+  <div class="kpi-card"><div class="kpi-label">Last Run</div><div class="kpi-value" style="font-size:16px;color:var(--teal)" id="kLastRun">—</div><div class="kpi-sub">UTC</div></div>
+</div>
+
+<!-- ── Row 1: Score trend + Check results ── -->
+<div class="grid-2">
+  <div class="chart-card">
+    <div class="chart-title">Quality score trend</div>
+    <div class="chart-sub">30-day history · all tables · daily runs</div>
+    <div style="position:relative;height:200px"><canvas id="trendChart"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Check results by type</div>
+    <div class="chart-sub">Pass · Warn · Fail breakdown per check type</div>
+    <div style="position:relative;height:200px"><canvas id="checkTypeChart"></canvas></div>
+  </div>
+</div>
+
+<!-- ── Row 2: Null heatmap + Failure rate ── -->
+<div class="grid-2">
+  <div class="chart-card">
+    <div class="chart-title">Null rate by table & column</div>
+    <div class="chart-sub">% of null values per key column</div>
+    <div style="position:relative;height:200px"><canvas id="nullChart"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Score by table</div>
+    <div class="chart-sub">Current run quality score per table</div>
+    <div style="position:relative;height:200px"><canvas id="tableScoreChart"></canvas></div>
+  </div>
+</div>
+
+<!-- ── Row 3: Check results list ── -->
+<div class="grid-full">
+  <div class="chart-card">
+    <div class="chart-title">Check results — current run</div>
+    <div class="chart-sub">All checks · sorted by status · click filters above to narrow down</div>
+    <div class="check-grid" id="checkList"></div>
+  </div>
+</div>
+
+<!-- ── Row 4: Table summary + Alert log ── -->
+<div class="grid-2">
+  <div class="chart-card">
+    <div class="chart-title">Table quality summary</div>
+    <div class="chart-sub">Score · checks · pass/warn/fail per table</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Table</th><th>Score</th><th>Grade</th><th>Passed</th><th>Warned</th><th>Failed</th><th>Status</th></tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Alert log</div>
+    <div class="chart-sub">Recent alerts raised by the monitoring pipeline</div>
+    <div class="alert-list" id="alertList"></div>
+  </div>
+</div>
+
+<!-- ── Footer ── -->
+<footer>
+  <div class="footer-left">Built by Sushmitha Kokkalgave · Data Quality Monitoring Framework</div>
+  <div class="footer-links">
+    <a href="https://github.com/sushmitha-kokkalgave/data-quality-monitoring" target="_blank">GitHub →</a>
+    <a href="https://linkedin.com/in/sushmitha-kokkalgave" target="_blank">LinkedIn →</a>
+  </div>
+</footer>
+
+</div><!-- /wrapper -->
+
+<script>
+// ── Seed random ────────────────────────────────────────────────────
+function sr(s){ let x=Math.sin(s+1)*10000; return x-Math.floor(x); }
+
+// ── Check definitions ──────────────────────────────────────────────
+const TABLES = ['claims','members','revenue_actuals'];
+
+const ALL_CHECKS = [
+  // claims
+  {table:'claims', check:'schema_check',         col:'ALL',            status:'PASS', failed:0,   total:7,    detail:'All 7 required columns present'},
+  {table:'claims', check:'null_check',            col:'claim_id',       status:'PASS', failed:0,   total:500,  detail:'0.0% nulls'},
+  {table:'claims', check:'null_check',            col:'member_id',      status:'WARN', failed:15,  total:500,  detail:'3.0% nulls (warn>5% fail>20%)'},
+  {table:'claims', check:'null_check',            col:'claim_status',   status:'PASS', failed:0,   total:500,  detail:'0.0% nulls'},
+  {table:'claims', check:'duplicate_check',       col:'claim_id',       status:'FAIL', failed:2,   total:500,  detail:'2 duplicate claim_ids found'},
+  {table:'claims', check:'range_check',           col:'billed_amount',  status:'FAIL', failed:3,   total:500,  detail:'3 records outside [0, 500000]'},
+  {table:'claims', check:'allowed_values_check',  col:'claim_status',   status:'FAIL', failed:5,   total:500,  detail:"Invalid values: ['UNKNOWN']"},
+  {table:'claims', check:'allowed_values_check',  col:'claim_type',     status:'PASS', failed:0,   total:500,  detail:'All values valid'},
+  {table:'claims', check:'regex_check',           col:'claim_date',     status:'WARN', failed:2,   total:500,  detail:"Pattern: \\d{4}-\\d{2}-\\d{2}. 2 don't match"},
+  // members
+  {table:'members', check:'schema_check',         col:'ALL',            status:'PASS', failed:0,   total:5,    detail:'All 5 required columns present'},
+  {table:'members', check:'null_check',           col:'member_id',      status:'PASS', failed:0,   total:200,  detail:'0.0% nulls'},
+  {table:'members', check:'null_check',           col:'member_name',    status:'WARN', failed:1,   total:200,  detail:'0.5% nulls'},
+  {table:'members', check:'duplicate_check',      col:'member_id',      status:'PASS', failed:0,   total:200,  detail:'No duplicates found'},
+  {table:'members', check:'allowed_values_check', col:'gender',         status:'PASS', failed:0,   total:200,  detail:'All values valid'},
+  {table:'members', check:'allowed_values_check', col:'plan_type',      status:'PASS', failed:0,   total:200,  detail:'All values valid'},
+  // revenue_actuals
+  {table:'revenue_actuals', check:'schema_check',        col:'ALL',            status:'PASS', failed:0,  total:4,    detail:'All 4 required columns present'},
+  {table:'revenue_actuals', check:'null_check',           col:'period',         status:'PASS', failed:0,  total:1500, detail:'0.0% nulls'},
+  {table:'revenue_actuals', check:'null_check',           col:'actual_revenue', status:'PASS', failed:0,  total:1500, detail:'0.0% nulls'},
+  {table:'revenue_actuals', check:'range_check',          col:'actual_revenue', status:'PASS', failed:0,  total:1500, detail:'All values in [0, 10000000]'},
+  {table:'revenue_actuals', check:'allowed_values_check', col:'department',     status:'PASS', failed:0,  total:1500, detail:'All values valid'},
+];
+
+// ── Score per table ───────────────────────────────────────────────
+const WEIGHTS = {schema_check:0.20,null_check:0.25,duplicate_check:0.20,range_check:0.15,allowed_values_check:0.10,regex_check:0.10};
+const STATUS_SCORES = {PASS:1.0,WARN:0.5,FAIL:0.0};
+
+function computeScore(checks){
+  const dims={};
+  checks.forEach(c=>{
+    if(!dims[c.check]) dims[c.check]=[];
+    dims[c.check].push(STATUS_SCORES[c.status]);
+  });
+  let totalW=0, weightedSum=0;
+  Object.entries(dims).forEach(([k,vals])=>{
+    const w=WEIGHTS[k]||0.1;
+    totalW+=w;
+    weightedSum+=w*(vals.reduce((a,b)=>a+b,0)/vals.length);
+  });
+  return totalW ? +(weightedSum/totalW*100).toFixed(1) : 0;
+}
+
+function gradeFrom(score){
+  if(score>=95) return {g:'A',c:'var(--green)', desc:'Excellent — all checks passing'};
+  if(score>=85) return {g:'B',c:'var(--blue)',  desc:'Good — minor issues detected'};
+  if(score>=70) return {g:'C',c:'var(--amber)', desc:'Fair — attention needed'};
+  if(score>=55) return {g:'D',c:'var(--red)',   desc:'Poor — multiple failures'};
+  return           {g:'F',c:'var(--red)',        desc:'Critical — immediate action required'};
+}
+
+// ── Chart registry ─────────────────────────────────────────────────
+const charts={};
+function dc(id){ if(charts[id]){charts[id].destroy();delete charts[id];} }
+
+const gc='rgba(99,140,210,0.08)', tc='#7a8aaa';
+const baseOpts={
+  responsive:true, maintainAspectRatio:false,
+  plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#0c1425',titleColor:'#e8edf8',bodyColor:'#7a8aaa',borderColor:'rgba(99,140,210,0.2)',borderWidth:1,padding:10} },
+};
+
+// ── Score ring ────────────────────────────────────────────────────
+let ringChart=null;
+function renderRing(score){
+  if(ringChart){ringChart.destroy();ringChart=null;}
+  const {c}=gradeFrom(score);
+  const colorHex = score>=95?'#00d68f':score>=85?'#4d9fff':score>=70?'#ffb020':'#ff4d4d';
+  ringChart=new Chart(document.getElementById('scoreRing'),{
+    type:'doughnut',
+    data:{datasets:[{data:[score,100-score],backgroundColor:[colorHex,'rgba(255,255,255,0.05)'],borderWidth:0,hoverOffset:0}]},
+    options:{cutout:'78%',plugins:{legend:{display:false},tooltip:{enabled:false}},animation:{duration:800}}
+  });
+  document.getElementById('scoreNum').textContent=score;
+  document.getElementById('scoreNum').style.color=colorHex;
+}
+
+// ── Main render ───────────────────────────────────────────────────
+function render(){
+  const tf = document.getElementById('tableFilter').value;
+  const sf = document.getElementById('statusFilter').value;
+
+  const filtered = ALL_CHECKS.filter(c=>
+    (tf==='all'||c.table===tf) &&
+    (sf==='all'||c.status===sf)
+  );
+  const forScore = tf==='all' ? ALL_CHECKS : ALL_CHECKS.filter(c=>c.table===tf);
+
+  const score   = computeScore(forScore);
+  const {g,c,desc} = gradeFrom(score);
+  const passed  = forScore.filter(c=>c.status==='PASS').length;
+  const warned  = forScore.filter(c=>c.status==='WARN').length;
+  const failed  = forScore.filter(c=>c.status==='FAIL').length;
+  const total   = forScore.length;
+
+  // banner
+  renderRing(score);
+  document.getElementById('scoreGrade').textContent = g;
+  document.getElementById('scoreGrade').style.color = c;
+  document.getElementById('scoreDesc').textContent  = desc;
+  document.getElementById('sPassed').textContent = passed;
+  document.getElementById('sWarned').textContent = warned;
+  document.getElementById('sFailed').textContent = failed;
+  document.getElementById('sTotal').textContent  = total;
+
+  // dimension scores
+  const dimData={};
+  forScore.forEach(ch=>{ if(!dimData[ch.check]) dimData[ch.check]=[]; dimData[ch.check].push(STATUS_SCORES[ch.status]); });
+  const dimColors={schema_check:'#4d9fff',null_check:'#00d68f',duplicate_check:'#a78bfa',range_check:'#ffb020',allowed_values_check:'#22d3ee',regex_check:'#f87171'};
+  const dimLabels={schema_check:'Schema',null_check:'Nulls',duplicate_check:'Dupes',range_check:'Range',allowed_values_check:'Values',regex_check:'Regex'};
+  document.getElementById('scoreDims').innerHTML = Object.entries(dimData).map(([k,vals])=>{
+    const s=+(vals.reduce((a,b)=>a+b,0)/vals.length*100).toFixed(0);
+    return `<div class="dim-item">
+      <div class="dim-label">${dimLabels[k]||k}</div>
+      <div class="dim-bar"><div class="dim-fill" style="width:${s}%;background:${dimColors[k]||'#4d9fff'}"></div></div>
+      <div class="dim-val" style="color:${dimColors[k]||'#4d9fff'}">${s}%</div>
+    </div>`;
+  }).join('');
+
+  // KPI cards
+  const nullChecks = forScore.filter(c=>c.check==='null_check');
+  const avgNull    = nullChecks.length ? +(nullChecks.reduce((s,c)=>s+c.failed/c.total*100,0)/nullChecks.length).toFixed(1) : 0;
+  const dupChecks  = forScore.filter(c=>c.check==='duplicate_check');
+  const avgDup     = dupChecks.length  ? +(dupChecks.reduce((s,c)=>s+c.failed/c.total*100,0)/dupChecks.length).toFixed(2) : 0;
+  const rangeViol  = forScore.filter(c=>c.check==='range_check').reduce((s,c)=>s+c.failed,0);
+  const now        = new Date();
+  const runTime    = `${String(now.getUTCHours()).padStart(2,'0')}:${String(now.getUTCMinutes()).padStart(2,'0')}`;
+
+  document.getElementById('kScore').textContent    = score+'/100';
+  document.getElementById('kScore').style.color    = score>=85?'var(--green)':score>=70?'var(--amber)':'var(--red)';
+  document.getElementById('kNullRate').textContent = avgNull+'%';
+  document.getElementById('kNullRate').style.color = avgNull<5?'var(--green)':avgNull<15?'var(--amber)':'var(--red)';
+  document.getElementById('kDupRate').textContent  = avgDup+'%';
+  document.getElementById('kDupRate').style.color  = avgDup<1?'var(--green)':avgDup<5?'var(--amber)':'var(--red)';
+  document.getElementById('kRange').textContent    = rangeViol;
+  document.getElementById('kRange').style.color    = rangeViol===0?'var(--green)':'var(--red)';
+  document.getElementById('kLastRun').textContent  = runTime;
+
+  renderTrend();
+  renderCheckTypeChart(forScore);
+  renderNullChart();
+  renderTableScoreChart();
+  renderCheckList(filtered);
+  renderTableSummary();
+  renderAlerts(forScore);
+}
+
+// ── Score trend ───────────────────────────────────────────────────
+function renderTrend(){
+  dc('trend');
+  const days=30;
+  const labels=Array.from({length:days},(_,i)=>{
+    const d=new Date(); d.setDate(d.getDate()-days+i+1);
+    return `${d.getMonth()+1}/${d.getDate()}`;
+  });
+  const claims  = labels.map((_,i)=>+(74+sr(i*3)*18).toFixed(1));
+  const members = labels.map((_,i)=>+(82+sr(i*3+1)*12).toFixed(1));
+  const revenue = labels.map((_,i)=>+(90+sr(i*3+2)*8).toFixed(1));
+
+  charts['trend']=new Chart(document.getElementById('trendChart'),{
+    type:'line',
+    data:{labels, datasets:[
+      {label:'claims',          data:claims,  borderColor:'#4d9fff', borderWidth:2, pointRadius:0, tension:0.4, fill:false},
+      {label:'members',         data:members, borderColor:'#00d68f', borderWidth:2, pointRadius:0, tension:0.4, fill:false},
+      {label:'revenue_actuals', data:revenue, borderColor:'#a78bfa', borderWidth:2, pointRadius:0, tension:0.4, fill:false},
+    ]},
+    options:{...baseOpts, scales:{
+      x:{ticks:{color:tc,font:{size:8},maxTicksLimit:10},grid:{color:gc}},
+      y:{min:50,max:100,ticks:{color:tc,font:{size:9},callback:v=>v+'/100'},grid:{color:gc}}
+    }, plugins:{...baseOpts.plugins, legend:{display:true,labels:{color:tc,font:{size:10},boxWidth:10}}}}
+  });
+}
+
+// ── Check type chart ──────────────────────────────────────────────
+function renderCheckTypeChart(d){
+  dc('checkType');
+  const types=['schema_check','null_check','duplicate_check','range_check','allowed_values_check','regex_check'];
+  const labels=['Schema','Nulls','Duplicates','Range','Values','Regex'];
+  const pass=types.map(t=>d.filter(c=>c.check===t&&c.status==='PASS').length);
+  const warn=types.map(t=>d.filter(c=>c.check===t&&c.status==='WARN').length);
+  const fail=types.map(t=>d.filter(c=>c.check===t&&c.status==='FAIL').length);
+
+  charts['checkType']=new Chart(document.getElementById('checkTypeChart'),{
+    type:'bar',
+    data:{labels, datasets:[
+      {label:'Pass', data:pass, backgroundColor:'rgba(0,214,143,0.75)',  borderRadius:3, borderWidth:0},
+      {label:'Warn', data:warn, backgroundColor:'rgba(255,176,32,0.75)', borderRadius:3, borderWidth:0},
+      {label:'Fail', data:fail, backgroundColor:'rgba(255,77,77,0.75)',  borderRadius:3, borderWidth:0},
+    ]},
+    options:{...baseOpts, scales:{
+      x:{ticks:{color:tc,font:{size:9}},grid:{color:gc},stacked:true},
+      y:{ticks:{color:tc,font:{size:9}},grid:{color:gc},stacked:true}
+    }, plugins:{...baseOpts.plugins, legend:{display:true,labels:{color:tc,font:{size:10},boxWidth:10}}}}
+  });
+}
+
+// ── Null chart ────────────────────────────────────────────────────
+function renderNullChart(){
+  dc('null');
+  const nullChecks = ALL_CHECKS.filter(c=>c.check==='null_check');
+  const labels     = nullChecks.map(c=>`${c.table.slice(0,8)}·${c.col}`);
+  const rates      = nullChecks.map(c=>+(c.failed/c.total*100).toFixed(1));
+  const colors     = rates.map(r=>r===0?'rgba(0,214,143,0.7)':r<5?'rgba(255,176,32,0.7)':'rgba(255,77,77,0.7)');
+
+  charts['null']=new Chart(document.getElementById('nullChart'),{
+    type:'bar',
+    data:{labels, datasets:[{data:rates,backgroundColor:colors,borderRadius:3,borderWidth:0}]},
+    options:{...baseOpts,indexAxis:'y', scales:{
+      x:{min:0,max:6,ticks:{color:tc,font:{size:9},callback:v=>v+'%'},grid:{color:gc}},
+      y:{ticks:{color:tc,font:{size:9}},grid:{display:false}}
+    }}
+  });
+}
+
+// ── Table score chart ─────────────────────────────────────────────
+function renderTableScoreChart(){
+  dc('tableScore');
+  const scores = TABLES.map(t=>computeScore(ALL_CHECKS.filter(c=>c.table===t)));
+  const colors = scores.map(s=>s>=85?'rgba(0,214,143,0.75)':s>=70?'rgba(255,176,32,0.75)':'rgba(255,77,77,0.75)');
+
+  charts['tableScore']=new Chart(document.getElementById('tableScoreChart'),{
+    type:'bar',
+    data:{labels:TABLES, datasets:[{data:scores,backgroundColor:colors,borderRadius:6,borderWidth:0}]},
+    options:{...baseOpts, scales:{
+      x:{ticks:{color:tc,font:{size:10}},grid:{color:gc}},
+      y:{min:0,max:100,ticks:{color:tc,font:{size:9},callback:v=>v+'/100'},grid:{color:gc}}
+    }, plugins:{...baseOpts.plugins, tooltip:{...baseOpts.plugins.tooltip,callbacks:{label:ctx=>` Score: ${ctx.raw}/100`}}}}
+  });
+}
+
+// ── Check list ────────────────────────────────────────────────────
+function renderCheckList(d){
+  const sorted = [...d].sort((a,b)=>{ const o={FAIL:0,WARN:1,PASS:2}; return o[a.status]-o[b.status]; });
+  document.getElementById('checkList').innerHTML = sorted.map(c=>{
+    const failRate = c.total ? +(c.failed/c.total*100).toFixed(1) : 0;
+    const countClass = c.status==='FAIL'?'fail-count':c.status==='WARN'?'warn-count':'pass-count';
+    return `<div class="check-row ${c.status.toLowerCase()}">
+      <div class="check-status"><span class="st-badge st-${c.status.toLowerCase()}">${c.status}</span></div>
+      <div class="check-name">${c.check}</div>
+      <div class="check-col">${c.table} · <span style="color:var(--teal)">${c.col}</span></div>
+      <div class="check-failed"><span class="${countClass}">${c.failed}</span> / ${c.total.toLocaleString()}</div>
+      <div class="check-detail">${c.detail}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:${failRate===0?'var(--green)':failRate<5?'var(--amber)':'var(--red)'};min-width:44px;text-align:right">${failRate}%</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Table summary ─────────────────────────────────────────────────
+function renderTableSummary(){
+  document.getElementById('tableBody').innerHTML = TABLES.map(t=>{
+    const checks = ALL_CHECKS.filter(c=>c.table===t);
+    const score  = computeScore(checks);
+    const {g,c}  = gradeFrom(score);
+    const passed = checks.filter(c=>c.status==='PASS').length;
+    const warned = checks.filter(c=>c.status==='WARN').length;
+    const failed = checks.filter(c=>c.status==='FAIL').length;
+    const badge  = score>=85?'tbadge-g':score>=70?'tbadge-a':'tbadge-r';
+    return `<tr>
+      <td>${t}</td>
+      <td style="color:${score>=85?'var(--green)':score>=70?'var(--amber)':'var(--red)'}">${score}</td>
+      <td><span style="color:${c};font-weight:600">${g}</span></td>
+      <td style="color:var(--green)">${passed}</td>
+      <td style="color:var(--amber)">${warned}</td>
+      <td style="color:var(--red)">${failed}</td>
+      <td><span class="tbadge ${badge}">${score>=85?'HEALTHY':score>=70?'MONITOR':'AT RISK'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Alert log ─────────────────────────────────────────────────────
+function renderAlerts(checks){
+  const now   = new Date();
+  const fmt   = d=>`${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')} UTC`;
+  const alerts= [];
+
+  const fails = checks.filter(c=>c.status==='FAIL');
+  const warns = checks.filter(c=>c.status==='WARN');
+
+  fails.forEach((c,i)=>{
+    const t=new Date(now-i*180000);
+    alerts.push({type:'crit',icon:'✗',title:`FAIL · ${c.table} · ${c.check}`,meta:`${c.failed} records failed · col: ${c.col}`,time:fmt(t)});
+  });
+  warns.forEach((c,i)=>{
+    const t=new Date(now-(fails.length+i)*120000);
+    alerts.push({type:'warn',icon:'!',title:`WARN · ${c.table} · ${c.check}`,meta:`${c.failed} records flagged · col: ${c.col}`,time:fmt(t)});
+  });
+  alerts.push({type:'info',icon:'▶',title:'Pipeline run completed',meta:'All tables processed · report exported to data/processed/',time:fmt(new Date(now-600000))});
+
+  document.getElementById('alertList').innerHTML = alerts.slice(0,6).map(a=>`
+    <div class="alert-item ${a.type}">
+      <div class="alert-icon" style="color:${a.type==='crit'?'var(--red)':a.type==='warn'?'var(--amber)':'var(--blue)'}">${a.icon}</div>
+      <div class="alert-body">
+        <div class="alert-title">${a.title}</div>
+        <div class="alert-meta">${a.meta}</div>
+      </div>
+      <div class="alert-time">${a.time}</div>
+    </div>`).join('');
+}
+
+// ── Simulate run ──────────────────────────────────────────────────
+function runChecks(){
+  const btn=document.querySelector('.run-btn');
+  btn.textContent='⟳ RUNNING...';
+  btn.style.opacity='0.6';
+  setTimeout(()=>{ btn.textContent='▶ RUN CHECKS'; btn.style.opacity='1'; render(); },1800);
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
